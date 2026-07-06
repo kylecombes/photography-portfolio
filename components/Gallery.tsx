@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import Masonry from 'react-masonry-css';
 import type { PhotoItem } from '@/lib/photos';
+import { Lightbox } from './Lightbox';
 import { PhotoTile } from './PhotoTile';
 
 // Column count by viewport width. Keys are max-widths; `default` applies above
@@ -18,15 +20,28 @@ interface GalleryProps {
 }
 
 export function Gallery({ photos }: GalleryProps) {
+  const [selected, setSelected] = useState<number | null>(null);
+
   return (
-    <Masonry
-      breakpointCols={BREAKPOINT_COLUMNS}
-      className="masonry-grid"
-      columnClassName="masonry-grid_column"
-    >
-      {photos.map((photo) => (
-        <PhotoTile key={photo.filename} photo={photo} />
-      ))}
-    </Masonry>
+    <>
+      <Masonry
+        breakpointCols={BREAKPOINT_COLUMNS}
+        className="masonry-grid"
+        columnClassName="masonry-grid_column"
+      >
+        {photos.map((photo, i) => (
+          <PhotoTile key={photo.filename} photo={photo} onSelect={() => setSelected(i)} />
+        ))}
+      </Masonry>
+
+      {selected !== null && (
+        <Lightbox
+          photos={photos}
+          index={selected}
+          onIndexChange={setSelected}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </>
   );
 }
