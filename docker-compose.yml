@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      THUMB_WIDTH: ${THUMB_WIDTH:-600}
+      FULL_QUALITY: ${FULL_QUALITY:-70}
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+    volumes:
+      # Read-only bind mount of the host ingest folder; originals are never modified.
+      - ${INGEST_DIR}:/ingest:ro
+      # Generated derivatives (full + thumb) live on a named volume.
+      - processed:/processed
+    expose:
+      - '3000'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-:80}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  processed:
+  caddy_data:
+  caddy_config:

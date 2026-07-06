@@ -1,0 +1,10 @@
+{$SITE_DOMAIN} {
+	encode gzip zstd
+
+	# Trust the real client IP forwarded by nothing in front of us; if you run
+	# Caddy behind another proxy (e.g. Cloudflare Tunnel), add its ranges here so
+	# X-Forwarded-For stays accurate for analytics geolocation.
+	# trusted_proxies static 172.16.0.0/12
+
+	reverse_proxy web:3000
+}
