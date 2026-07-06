@@ -52,3 +52,6 @@ next-env.d.ts
 
 # local-only compose overrides
 docker-compose.override.yml
+
+# playwright mcp artifacts
+.playwright-mcp/
