@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useAutoHideControls } from '@/hooks/useAutoHideControls';
+import { useViewTracking } from '@/hooks/useViewTracking';
 import { useZoomPan } from '@/hooks/useZoomPan';
+import { recordZoom } from '@/lib/analytics';
+import { EVENT_DEBOUNCE_MS } from '@/lib/analytics-types';
 import type { PhotoItem } from '@/lib/photos';
 import { LightboxControls } from './LightboxControls';
 
@@ -34,8 +37,10 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     panPointerDown,
     panPointerMove,
     panPointerUp,
+    getVisibleRegion,
   } = useZoomPan();
   const { visible, poke } = useAutoHideControls();
+  useViewTracking(photo.filename);
   const [closing, setClosing] = useState(false);
   const gesture = useRef<{ x: number; y: number; mode: 'idle' | 'swipe' | 'pan' }>({
     x: 0,
@@ -60,6 +65,17 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     reset();
     onIndexChange(Math.min(photos.length - 1, index + 1));
   }, [index, photos.length, onIndexChange, reset]);
+
+  // Record the visible region ~500ms after zoom/pan settles (debounced so we log
+  // at most one zoom event per interval, not one per frame of movement).
+  useEffect(() => {
+    if (!isZoomed) return;
+    const timer = window.setTimeout(() => {
+      const region = getVisibleRegion();
+      if (region) recordZoom(photo.filename, region);
+    }, EVENT_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [transform, isZoomed, photo.filename, getVisibleRegion]);
 
   // Lock background scroll while the lightbox is open.
   useEffect(() => {

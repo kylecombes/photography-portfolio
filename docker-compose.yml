@@ -24,12 +24,16 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       THUMB_WIDTH: ${THUMB_WIDTH:-600}
       FULL_QUALITY: ${FULL_QUALITY:-70}
-      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+      # Path to a GeoLite2-City.mmdb inside the container (optional). When unset,
+      # analytics geolocation is disabled and city/region/country stay null.
+      GEOLITE_DB: ${GEOLITE_DB:-}
     volumes:
       # Read-only bind mount of the host ingest folder; originals are never modified.
       - ${INGEST_DIR}:/ingest:ro
       # Generated derivatives (full + thumb) live on a named volume.
       - processed:/processed
+      # Optional: mount a GeoLite2-City database and set GEOLITE_DB to its path.
+      # - ./GeoLite2-City.mmdb:/data/GeoLite2-City.mmdb:ro
     expose:
       - '3000'
 
