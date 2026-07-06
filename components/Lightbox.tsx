@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { useAutoHideControls } from '@/hooks/useAutoHideControls';
 import { useZoomPan } from '@/hooks/useZoomPan';
 import type { PhotoItem } from '@/lib/photos';
@@ -20,7 +20,10 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
   const photo = photos[index];
   const {
     transform,
+    transition,
     isZoomed,
+    canZoomIn,
+    canZoomOut,
     stageRef,
     imageRef,
     reset,
@@ -33,11 +36,18 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     panPointerUp,
   } = useZoomPan();
   const { visible, poke } = useAutoHideControls();
+  const [closing, setClosing] = useState(false);
   const gesture = useRef<{ x: number; y: number; mode: 'idle' | 'swipe' | 'pan' }>({
     x: 0,
     y: 0,
     mode: 'idle',
   });
+
+  // Fade out over 250ms before unmounting.
+  const requestClose = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, 250);
+  }, [onClose]);
 
   const hasPrev = index > 0;
   const hasNext = index < photos.length - 1;
@@ -64,7 +74,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       poke();
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') requestClose();
       else if (event.key === 'ArrowLeft') goPrev();
       else if (event.key === 'ArrowRight') goNext();
       else if (event.key === '+' || event.key === '=') zoomIn();
@@ -72,7 +82,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [goPrev, goNext, onClose, poke, zoomIn, zoomOut]);
+  }, [goPrev, goNext, requestClose, poke, zoomIn, zoomOut]);
 
   const onPointerDown = (event: PointerEvent) => {
     poke();
@@ -116,13 +126,15 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     }
     // A tap: outside the image closes; on the image just wakes the controls.
     if (Math.hypot(dx, dy) < TAP_SLOP && isOutsideImage(event.clientX, event.clientY)) {
-      onClose();
+      requestClose();
     }
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black"
+      className={`fixed inset-0 z-50 bg-black transition-opacity duration-[250ms] ${
+        closing ? 'opacity-0' : 'lb-enter opacity-100'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-label="Photo viewer"
@@ -145,7 +157,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
           src={`/api/image/full/${encodeURIComponent(photo.filename)}`}
           alt=""
           draggable={false}
-          style={{ transform }}
+          style={{ transform, transition }}
           className="pointer-events-none max-h-full max-w-full select-none object-contain will-change-transform"
         />
       </div>
@@ -156,9 +168,11 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
         count={photos.length}
         hasPrev={hasPrev}
         hasNext={hasNext}
+        canZoomIn={canZoomIn}
+        canZoomOut={canZoomOut}
         onPrev={goPrev}
         onNext={goNext}
-        onClose={onClose}
+        onClose={requestClose}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
       />

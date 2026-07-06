@@ -25,10 +25,21 @@ interface Transform {
 
 const IDENTITY: Transform = { scale: 1, tx: 0, ty: 0 };
 
+export interface VisibleRegion {
+  rx: number;
+  ry: number;
+  rw: number;
+  rh: number;
+  scale: number;
+}
+
 export interface ZoomPan {
   scale: number;
   isZoomed: boolean;
+  canZoomIn: boolean;
+  canZoomOut: boolean;
   transform: string;
+  transition: string;
   stageRef: RefObject<HTMLDivElement | null>;
   imageRef: RefObject<HTMLImageElement | null>;
   reset: () => void;
@@ -39,6 +50,7 @@ export interface ZoomPan {
   panPointerDown: (event: PointerEvent) => void;
   panPointerMove: (event: PointerEvent) => void;
   panPointerUp: (event: PointerEvent) => void;
+  getVisibleRegion: () => VisibleRegion | null;
 }
 
 /// Zoom + pan transform state for the lightbox image. Panning is clamped so the
@@ -49,6 +61,8 @@ export function useZoomPan(): ZoomPan {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [transform, setTransform] = useState<Transform>(IDENTITY);
+  // Animate zoom changes, but not live panning (a transition would lag the drag).
+  const [panning, setPanning] = useState(false);
 
   // Mirror the committed transform so pointer handlers can read the pan origin.
   // Written from an effect (never during render).
@@ -134,6 +148,7 @@ export function useZoomPan(): ZoomPan {
       baseX: latest.current.tx,
       baseY: latest.current.ty,
     };
+    setPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   }, []);
 
@@ -152,15 +167,43 @@ export function useZoomPan(): ZoomPan {
   const panPointerUp = useCallback((event: PointerEvent) => {
     if (!pan.current.active) return;
     pan.current.active = false;
+    setPanning(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }, []);
 
+  // The fraction of the image currently visible in the stage (for zoom analytics).
+  const getVisibleRegion = useCallback((): VisibleRegion | null => {
+    const image = imageRef.current;
+    const stage = stageRef.current;
+    if (!image || !stage) return null;
+    const { scale, tx, ty } = latest.current;
+    const scaledW = image.offsetWidth * scale;
+    const scaledH = image.offsetHeight * scale;
+    const imgLeft = stage.clientWidth / 2 + tx - scaledW / 2;
+    const imgTop = stage.clientHeight / 2 + ty - scaledH / 2;
+    const visLeft = Math.max(0, imgLeft);
+    const visTop = Math.max(0, imgTop);
+    const visRight = Math.min(stage.clientWidth, imgLeft + scaledW);
+    const visBottom = Math.min(stage.clientHeight, imgTop + scaledH);
+    if (visRight <= visLeft || visBottom <= visTop) return null;
+    return {
+      rx: (visLeft - imgLeft) / scaledW,
+      ry: (visTop - imgTop) / scaledH,
+      rw: (visRight - visLeft) / scaledW,
+      rh: (visBottom - visTop) / scaledH,
+      scale,
+    };
+  }, []);
+
   return {
     scale: transform.scale,
     isZoomed: transform.scale > MIN_SCALE,
+    canZoomIn: transform.scale < MAX_SCALE,
+    canZoomOut: transform.scale > MIN_SCALE,
     transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
+    transition: panning ? 'none' : 'transform 180ms ease-out',
     stageRef,
     imageRef,
     reset,
@@ -171,5 +214,6 @@ export function useZoomPan(): ZoomPan {
     panPointerDown,
     panPointerMove,
     panPointerUp,
+    getVisibleRegion,
   };
 }

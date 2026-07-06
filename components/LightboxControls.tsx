@@ -4,19 +4,28 @@ interface IconButtonProps {
   label: string;
   onClick: () => void;
   interactive: boolean;
+  disabled?: boolean;
   className?: string;
   children: ReactNode;
 }
 
-function IconButton({ label, onClick, interactive, className = '', children }: IconButtonProps) {
+function IconButton({
+  label,
+  onClick,
+  interactive,
+  disabled = false,
+  className = '',
+  children,
+}: IconButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={`cursor-pointer rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/25 ${
-        interactive ? 'pointer-events-auto' : 'pointer-events-none'
-      } ${className}`}
+      disabled={disabled}
+      className={`rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/25 disabled:pointer-events-none disabled:opacity-30 disabled:hover:bg-white/10 ${
+        disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+      } ${interactive ? 'pointer-events-auto' : 'pointer-events-none'} ${className}`}
     >
       {children}
     </button>
@@ -29,6 +38,8 @@ interface LightboxControlsProps {
   count: number;
   hasPrev: boolean;
   hasNext: boolean;
+  canZoomIn: boolean;
+  canZoomOut: boolean;
   onPrev: () => void;
   onNext: () => void;
   onClose: () => void;
@@ -45,6 +56,8 @@ export function LightboxControls({
   count,
   hasPrev,
   hasNext,
+  canZoomIn,
+  canZoomOut,
   onPrev,
   onNext,
   onClose,
@@ -97,6 +110,7 @@ export function LightboxControls({
           label="Zoom out"
           onClick={onZoomOut}
           interactive={visible}
+          disabled={!canZoomOut}
           className="flex h-10 w-10 items-center justify-center text-xl"
         >
           −
@@ -105,6 +119,7 @@ export function LightboxControls({
           label="Zoom in"
           onClick={onZoomIn}
           interactive={visible}
+          disabled={!canZoomIn}
           className="flex h-10 w-10 items-center justify-center text-xl"
         >
           +
