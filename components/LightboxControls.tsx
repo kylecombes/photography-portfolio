@@ -14,7 +14,7 @@ function IconButton({ label, onClick, interactive, className = '', children }: I
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={`rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/25 ${
+      className={`cursor-pointer rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/25 ${
         interactive ? 'pointer-events-auto' : 'pointer-events-none'
       } ${className}`}
     >
