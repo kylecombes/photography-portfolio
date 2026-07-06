@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { extractExif } from '@/lib/exif';
-import { derivativesExist, processImage } from '@/lib/images';
+import { derivativesExist, processImage, removeDerivatives } from '@/lib/images';
 
 const SUPPORTED = /\.(jpe?g|png|webp|tiff?|avif|heif)$/i;
 
@@ -47,4 +47,17 @@ export async function ingestFile(
   });
 
   return 'ingested';
+}
+
+/// Remove a photo when its source file is deleted from the ingest folder:
+/// delete both derivatives and the Photo row. Analytics rows (which reference
+/// the filename only as historical, anonymous data) are intentionally kept.
+export async function removeFile(filePath: string): Promise<'removed' | 'skipped'> {
+  const filename = path.basename(filePath);
+  if (!isSupportedImage(filename)) return 'skipped';
+
+  await removeDerivatives(filename);
+  await prisma.photo.deleteMany({ where: { filename } });
+
+  return 'removed';
 }

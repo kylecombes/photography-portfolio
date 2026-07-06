@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import path from 'node:path';
 import { INGEST_DIR } from '@/lib/config';
-import { ingestFile, isSupportedImage } from '@/lib/ingest';
+import { ingestFile, isSupportedImage, removeFile } from '@/lib/ingest';
 
 const log = (message: string) => console.log(`[watcher] ${message}`);
 
@@ -13,6 +13,17 @@ async function handleFile(filePath: string, skipIfDone: boolean) {
     if (result === 'ingested') log(`ingested ${filename}`);
   } catch (err) {
     log(`failed ${filename}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+async function handleUnlink(filePath: string) {
+  const filename = path.basename(filePath);
+  if (!isSupportedImage(filename)) return;
+  try {
+    const result = await removeFile(filePath);
+    if (result === 'removed') log(`removed ${filename}`);
+  } catch (err) {
+    log(`failed to remove ${filename}: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -32,6 +43,7 @@ function start() {
   // We only skip-if-done for the initial scan; live drops are always (re)ingested.
   let initialScanDone = false;
   watcher.on('add', (filePath) => handleFile(filePath, !initialScanDone));
+  watcher.on('unlink', (filePath) => handleUnlink(filePath));
   watcher.on('ready', () => {
     initialScanDone = true;
     log('initial scan complete; watching for new files');

@@ -39,6 +39,14 @@ export async function derivativesExist(filename: string): Promise<boolean> {
   }
 }
 
+/// Delete both derivatives for a filename. Missing files are ignored.
+export async function removeDerivatives(filename: string): Promise<void> {
+  await Promise.all([
+    fs.rm(derivativePath('full', filename), { force: true }),
+    fs.rm(derivativePath('thumb', filename), { force: true }),
+  ]);
+}
+
 /// Generate the compressed full-size JPEG and the thumbnail for a source image.
 /// Returns the derivative's visual dimensions and the source mime type.
 export async function processImage(sourcePath: string, filename: string): Promise<ProcessedImage> {
