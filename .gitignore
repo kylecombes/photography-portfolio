@@ -46,3 +46,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev ingest folder (host side of the /ingest bind mount)
+/.ingest
+
+# local-only compose overrides
+docker-compose.override.yml

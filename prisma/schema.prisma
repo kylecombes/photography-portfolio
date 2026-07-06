@@ -1,4 +1,4 @@
-// Prisma schema — models are added in Stage 2.
+// Prisma schema for the photography portfolio.
 // Docs: https://pris.ly/d/prisma-schema
 
 generator client {
@@ -8,4 +8,67 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+/// One photograph. Keyed by filename — all images come from a single camera
+/// pipeline, so filename collisions aren't expected.
+model Photo {
+  filename   String    @id
+  mimeType   String
+  sizeBytes  Int
+  width      Int
+  height     Int
+  takenAt    DateTime? // EXIF DateTimeOriginal
+  importedAt DateTime  @default(now()) // when this record was created
+  exif       Json // sanitized EXIF blob (serial/owner tags stripped)
+
+  @@index([takenAt])
+}
+
+/// An anonymous, per-visit session. The id is a client-generated UUID held in
+/// sessionStorage — not a durable cross-visit identifier.
+model Session {
+  id        String   @id
+  createdAt DateTime @default(now())
+  activeMs  Int      @default(0) // foreground time accumulated via heartbeats
+  lastSeen  DateTime @default(now())
+  city      String? // coarse IP-derived location (raw IP is never stored)
+  region    String?
+  country   String?
+
+  views       ImageView[]
+  zoomRegions ZoomRegion[]
+}
+
+/// A single photo view within a session. Only recorded when durationMs >= 1000.
+model ImageView {
+  id         String   @id @default(cuid())
+  sessionId  String
+  filename   String
+  viewedAt   DateTime @default(now())
+  durationMs Int
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([filename])
+  @@index([sessionId])
+}
+
+/// A snapshot of the visible region while zoomed in, for later attention heatmaps.
+/// (rx, ry, rw, rh) is the visible bounding box normalized to 0..1 of the image.
+model ZoomRegion {
+  id        String   @id @default(cuid())
+  sessionId String
+  filename  String
+  at        DateTime @default(now())
+  rx        Float
+  ry        Float
+  rw        Float
+  rh        Float
+  scale     Float
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([filename])
+  @@index([sessionId])
 }
