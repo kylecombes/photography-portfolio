@@ -50,8 +50,8 @@ export async function ingestFile(
 }
 
 /// Remove a photo when its source file is deleted from the ingest folder:
-/// delete both derivatives and the Photo row. Analytics rows (which reference
-/// the filename only as historical, anonymous data) are intentionally kept.
+/// delete both derivatives and the Photo row. Its analytics rows (ImageView,
+/// ZoomRegion) are cascade-deleted by the Photo foreign key.
 export async function removeFile(filePath: string): Promise<'removed' | 'skipped'> {
   const filename = path.basename(filePath);
   if (!isSupportedImage(filename)) return 'skipped';

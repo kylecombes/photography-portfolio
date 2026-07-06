@@ -22,6 +22,9 @@ model Photo {
   importedAt DateTime  @default(now()) // when this record was created
   exif       Json // sanitized EXIF blob (serial/owner tags stripped)
 
+  views       ImageView[]
+  zoomRegions ZoomRegion[]
+
   @@index([takenAt])
 }
 
@@ -49,6 +52,7 @@ model ImageView {
   durationMs Int
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  photo   Photo   @relation(fields: [filename], references: [filename], onDelete: Cascade)
 
   @@index([filename])
   @@index([sessionId])
@@ -68,6 +72,7 @@ model ZoomRegion {
   scale     Float
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  photo   Photo   @relation(fields: [filename], references: [filename], onDelete: Cascade)
 
   @@index([filename])
   @@index([sessionId])

@@ -49,10 +49,27 @@ export async function POST(request: Request) {
 
   if (views.length === 0 && zooms.length === 0) return new Response(null, { status: 204 });
 
+  // Only keep events for photos that still exist — the Photo FK would otherwise
+  // reject a beacon that arrives just after a photo was deleted.
+  const filenames = [...new Set([...views, ...zooms].map((event) => event.filename))];
+  const existing = new Set(
+    (
+      await prisma.photo.findMany({
+        where: { filename: { in: filenames } },
+        select: { filename: true },
+      })
+    ).map((photo) => photo.filename),
+  );
+  const validViews = views.filter((view) => existing.has(view.filename));
+  const validZooms = zooms.filter((zoom) => existing.has(zoom.filename));
+
+  if (validViews.length === 0 && validZooms.length === 0)
+    return new Response(null, { status: 204 });
+
   await ensureSession(sessionId, clientIp(request));
   await Promise.all([
-    views.length ? prisma.imageView.createMany({ data: views }) : null,
-    zooms.length ? prisma.zoomRegion.createMany({ data: zooms }) : null,
+    validViews.length ? prisma.imageView.createMany({ data: validViews }) : null,
+    validZooms.length ? prisma.zoomRegion.createMany({ data: validZooms }) : null,
   ]);
 
   return new Response(null, { status: 204 });
