@@ -48,10 +48,10 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     mode: 'idle',
   });
 
-  // Fade out over 250ms before unmounting.
+  // Fade out over 100ms before unmounting.
   const requestClose = useCallback(() => {
     setClosing(true);
-    window.setTimeout(onClose, 250);
+    window.setTimeout(onClose, 100);
   }, [onClose]);
 
   const hasPrev = index > 0;
@@ -148,7 +148,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-black transition-opacity duration-[250ms] ${
+      className={`fixed inset-0 z-50 bg-black transition-opacity duration-[100ms] ${
         closing ? 'opacity-0' : 'lb-enter opacity-100'
       }`}
       role="dialog"

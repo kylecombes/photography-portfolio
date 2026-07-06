@@ -28,7 +28,7 @@ body {
 }
 
 .lb-enter {
-  animation: lb-fade-in 250ms ease-out;
+  animation: lb-fade-in 100ms ease-out;
 }
 
 /* react-masonry-css: flex row of equal-width columns with a consistent gutter. */
