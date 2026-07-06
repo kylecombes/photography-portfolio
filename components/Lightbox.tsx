@@ -100,6 +100,23 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
     return () => window.removeEventListener('keydown', onKey);
   }, [goPrev, goNext, requestClose, poke, zoomIn, zoomOut]);
 
+  // In browser fullscreen, Escape is a user-agent "exit fullscreen" action we
+  // can't cancel, and it often isn't delivered as a keydown. So treat leaving
+  // fullscreen while the lightbox is open as a request to close it — that way
+  // Escape closes the lightbox instead of silently only dropping fullscreen.
+  useEffect(() => {
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    const onFullscreenChange = () => {
+      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) requestClose();
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+    };
+  }, [requestClose]);
+
   const onPointerDown = (event: PointerEvent) => {
     poke();
     if (isZoomed) {

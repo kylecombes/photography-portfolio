@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { AnalyticsRoot } from '@/components/AnalyticsRoot';
+import { FullscreenButton } from '@/components/FullscreenButton';
 import './globals.css';
 
 const geistSans = Geist({
@@ -27,6 +28,7 @@ export default function RootLayout({
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full">
         {children}
+        <FullscreenButton />
         <AnalyticsRoot />
       </body>
     </html>
