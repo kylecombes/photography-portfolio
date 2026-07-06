@@ -55,3 +55,7 @@ docker-compose.override.yml
 
 # playwright mcp artifacts
 .playwright-mcp/
+
+# editor swap files
+*.swp
+*.swo

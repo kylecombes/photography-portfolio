@@ -18,6 +18,11 @@ export function PhotoTile({ photo, onSelect }: PhotoTileProps) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- derivatives are pre-optimized and served from a runtime volume, not the build output */}
       <img
+        // Reveal immediately if the image finished loading before onLoad could
+        // attach (e.g. served from cache during hydration); onLoad covers the rest.
+        ref={(img) => {
+          if (img?.complete && img.naturalWidth > 0) img.classList.add('opacity-100');
+        }}
         src={`/api/image/thumb/${encodeURIComponent(photo.filename)}`}
         alt=""
         width={photo.width}
