@@ -6,6 +6,7 @@ import { useViewTracking } from '@/hooks/useViewTracking';
 import { useZoomPan } from '@/hooks/useZoomPan';
 import { recordZoom } from '@/lib/analytics';
 import { EVENT_DEBOUNCE_MS } from '@/lib/analytics-types';
+import { isFullscreen, wasRecentlyToggled } from '@/lib/fullscreen';
 import type { PhotoItem } from '@/lib/photos';
 import { LightboxControls } from './LightboxControls';
 
@@ -23,7 +24,6 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
   const photo = photos[index];
   const {
     transform,
-    transition,
     isZoomed,
     canZoomIn,
     canZoomOut,
@@ -102,12 +102,12 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
 
   // In browser fullscreen, Escape is a user-agent "exit fullscreen" action we
   // can't cancel, and it often isn't delivered as a keydown. So treat leaving
-  // fullscreen while the lightbox is open as a request to close it — that way
-  // Escape closes the lightbox instead of silently only dropping fullscreen.
+  // fullscreen while the lightbox is open as a request to close it — but only
+  // when it wasn't an intentional toggle (the f key / fullscreen button), so
+  // those don't also close the lightbox.
   useEffect(() => {
-    const doc = document as Document & { webkitFullscreenElement?: Element | null };
     const onFullscreenChange = () => {
-      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) requestClose();
+      if (!isFullscreen() && !wasRecentlyToggled()) requestClose();
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -190,7 +190,7 @@ export function Lightbox({ photos, index, onIndexChange, onClose }: LightboxProp
           src={`/api/image/full/${encodeURIComponent(photo.filename)}`}
           alt=""
           draggable={false}
-          style={{ transform, transition }}
+          style={{ transform }}
           className="pointer-events-none max-h-full max-w-full select-none object-contain will-change-transform"
         />
       </div>

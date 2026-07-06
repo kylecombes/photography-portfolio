@@ -14,6 +14,9 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 const BUTTON_STEP = 1.6;
 const DOUBLE_TAP_SCALE = 2.5;
+const PAN_THRESHOLD = 4; // px of movement before a press counts as a drag (not a tap)
+const SMOOTHING = 0.2; // per-frame easing toward the target (exponential)
+const MAX_SCALE_STEP = 0.08; // cap on scale change per frame, so far targets ease in at a steady speed instead of lurching
 
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
 
@@ -39,7 +42,6 @@ export interface ZoomPan {
   canZoomIn: boolean;
   canZoomOut: boolean;
   transform: string;
-  transition: string;
   stageRef: RefObject<HTMLDivElement | null>;
   imageRef: RefObject<HTMLImageElement | null>;
   reset: () => void;
@@ -53,27 +55,23 @@ export interface ZoomPan {
   getVisibleRegion: () => VisibleRegion | null;
 }
 
-/// Zoom + pan transform state for the lightbox image. Panning is clamped so the
-/// image can't be dragged past its own edges, and wheel/double-tap zoom keep the
-/// point under the cursor stable. The current (scale, tx, ty) is also what the
-/// analytics layer reads to compute the visible region.
+/// Zoom + pan for the lightbox image. Zoom eases toward a target scale via a
+/// requestAnimationFrame tween (velocity-continuous, so rapid clicks accumulate
+/// and never lurch); panning is applied instantly. Panning is clamped to the
+/// image edges, and cursor-anchored zoom keeps the point under the cursor fixed.
 export function useZoomPan(): ZoomPan {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const [transform, setTransform] = useState<Transform>(IDENTITY);
-  // Animate zoom changes, but not live panning (a transition would lag the drag).
-  const [panning, setPanning] = useState(false);
 
-  // Mirror the committed transform so pointer handlers can read the pan origin.
-  // Written from an effect (never during render).
-  const latest = useRef(transform);
-  useEffect(() => {
-    latest.current = transform;
-  }, [transform]);
+  // `rendered` is what's on screen; `target` is where the zoom is heading. Both
+  // are refs (mutated by the animation loop / pointer handlers); `render` state
+  // mirrors `rendered` to trigger paints.
+  const [render, setRender] = useState<Transform>(IDENTITY);
+  const rendered = useRef<Transform>(IDENTITY);
+  const target = useRef<Transform>(IDENTITY);
+  const frame = useRef(0);
+  const pan = useRef({ active: false, moved: false, startX: 0, startY: 0, baseX: 0, baseY: 0 });
 
-  const pan = useRef({ active: false, startX: 0, startY: 0, baseX: 0, baseY: 0 });
-
-  // Max translation per axis: how far the scaled image overflows the stage.
   const overflow = useCallback((scale: number) => {
     const image = imageRef.current;
     const stage = stageRef.current;
@@ -92,63 +90,120 @@ export function useZoomPan(): ZoomPan {
     [overflow],
   );
 
-  // Pure transform math for a zoom, given the previous transform. Keeping the
-  // point at (clientX, clientY) visually fixed when a cursor position is given.
+  const step = useCallback(function step() {
+    const cur = rendered.current;
+    const tgt = target.current;
+    let ds = (tgt.scale - cur.scale) * SMOOTHING;
+    let dtx = (tgt.tx - cur.tx) * SMOOTHING;
+    let dty = (tgt.ty - cur.ty) * SMOOTHING;
+    // Cap the speed uniformly (scale + translate scaled together, so the zoom
+    // trajectory stays consistent). Big target jumps ease in at a steady pace
+    // instead of a fast ease-out lurch; the tail still decelerates smoothly.
+    if (Math.abs(ds) > MAX_SCALE_STEP) {
+      const ratio = MAX_SCALE_STEP / Math.abs(ds);
+      ds *= ratio;
+      dtx *= ratio;
+      dty *= ratio;
+    }
+    const next: Transform = {
+      scale: cur.scale + ds,
+      tx: cur.tx + dtx,
+      ty: cur.ty + dty,
+    };
+    const done =
+      Math.abs(tgt.scale - next.scale) < 0.001 &&
+      Math.abs(tgt.tx - next.tx) < 0.1 &&
+      Math.abs(tgt.ty - next.ty) < 0.1;
+    const value = done ? tgt : next;
+    rendered.current = value;
+    setRender(value);
+    frame.current = done ? 0 : requestAnimationFrame(step);
+  }, []);
+
+  const animateTo = useCallback(
+    (next: Transform) => {
+      target.current = next;
+      if (!frame.current) frame.current = requestAnimationFrame(step);
+    },
+    [step],
+  );
+
+  // Apply a transform instantly (used for panning), cancelling any zoom tween.
+  const jumpTo = useCallback((next: Transform) => {
+    if (frame.current) {
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
+    }
+    target.current = next;
+    rendered.current = next;
+    setRender(next);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (frame.current) cancelAnimationFrame(frame.current);
+    },
+    [],
+  );
+
+  // Zoom target math, based on the current target so rapid clicks compound. When
+  // a cursor position is given, keep that point visually fixed.
   const computeZoom = useCallback(
-    (prev: Transform, nextScale: number, clientX?: number, clientY?: number): Transform => {
+    (base: Transform, nextScale: number, clientX?: number, clientY?: number): Transform => {
       const scale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
       if (scale === MIN_SCALE) return IDENTITY;
       const stage = stageRef.current;
       if (!stage || clientX === undefined || clientY === undefined) {
-        return clampTranslate(scale, prev.tx, prev.ty);
+        return clampTranslate(scale, base.tx, base.ty);
       }
       const rect = stage.getBoundingClientRect();
       const relX = clientX - rect.left - rect.width / 2;
       const relY = clientY - rect.top - rect.height / 2;
-      const pointX = (relX - prev.tx) / prev.scale;
-      const pointY = (relY - prev.ty) / prev.scale;
+      const pointX = (relX - base.tx) / base.scale;
+      const pointY = (relY - base.ty) / base.scale;
       return clampTranslate(scale, relX - pointX * scale, relY - pointY * scale);
     },
     [clampTranslate],
   );
 
-  const reset = useCallback(() => setTransform(IDENTITY), []);
+  const reset = useCallback(() => animateTo(IDENTITY), [animateTo]);
   const zoomIn = useCallback(
-    () => setTransform((prev) => computeZoom(prev, prev.scale * BUTTON_STEP)),
-    [computeZoom],
+    () => animateTo(computeZoom(target.current, target.current.scale * BUTTON_STEP)),
+    [animateTo, computeZoom],
   );
   const zoomOut = useCallback(
-    () => setTransform((prev) => computeZoom(prev, prev.scale / BUTTON_STEP)),
-    [computeZoom],
+    () => animateTo(computeZoom(target.current, target.current.scale / BUTTON_STEP)),
+    [animateTo, computeZoom],
   );
 
   const toggleZoomAt = useCallback(
-    (clientX: number, clientY: number) =>
-      setTransform((prev) =>
-        prev.scale > MIN_SCALE ? IDENTITY : computeZoom(prev, DOUBLE_TAP_SCALE, clientX, clientY),
-      ),
-    [computeZoom],
+    (clientX: number, clientY: number) => {
+      if (target.current.scale > MIN_SCALE) reset();
+      else animateTo(computeZoom(target.current, DOUBLE_TAP_SCALE, clientX, clientY));
+    },
+    [animateTo, computeZoom, reset],
   );
 
   const onWheel = useCallback(
     (event: WheelEvent) => {
       const factor = event.deltaY < 0 ? BUTTON_STEP : 1 / BUTTON_STEP;
-      const { clientX, clientY } = event;
-      setTransform((prev) => computeZoom(prev, prev.scale * factor, clientX, clientY));
+      animateTo(
+        computeZoom(target.current, target.current.scale * factor, event.clientX, event.clientY),
+      );
     },
-    [computeZoom],
+    [animateTo, computeZoom],
   );
 
   const panPointerDown = useCallback((event: PointerEvent) => {
-    if (latest.current.scale <= MIN_SCALE) return;
+    if (rendered.current.scale <= MIN_SCALE) return;
     pan.current = {
       active: true,
+      moved: false,
       startX: event.clientX,
       startY: event.clientY,
-      baseX: latest.current.tx,
-      baseY: latest.current.ty,
+      baseX: rendered.current.tx,
+      baseY: rendered.current.ty,
     };
-    setPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   }, []);
 
@@ -157,17 +212,23 @@ export function useZoomPan(): ZoomPan {
       if (!pan.current.active) return;
       const dx = event.clientX - pan.current.startX;
       const dy = event.clientY - pan.current.startY;
-      setTransform((prev) =>
-        clampTranslate(prev.scale, pan.current.baseX + dx, pan.current.baseY + dy),
+      // Only treat this as a drag once the pointer actually moves — a plain click
+      // (e.g. part of a double-click) must not start panning.
+      if (!pan.current.moved) {
+        if (Math.hypot(dx, dy) < PAN_THRESHOLD) return;
+        pan.current.moved = true;
+      }
+      jumpTo(
+        clampTranslate(rendered.current.scale, pan.current.baseX + dx, pan.current.baseY + dy),
       );
     },
-    [clampTranslate],
+    [clampTranslate, jumpTo],
   );
 
   const panPointerUp = useCallback((event: PointerEvent) => {
     if (!pan.current.active) return;
     pan.current.active = false;
-    setPanning(false);
+    pan.current.moved = false;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -178,7 +239,7 @@ export function useZoomPan(): ZoomPan {
     const image = imageRef.current;
     const stage = stageRef.current;
     if (!image || !stage) return null;
-    const { scale, tx, ty } = latest.current;
+    const { scale, tx, ty } = rendered.current;
     const scaledW = image.offsetWidth * scale;
     const scaledH = image.offsetHeight * scale;
     const imgLeft = stage.clientWidth / 2 + tx - scaledW / 2;
@@ -198,12 +259,11 @@ export function useZoomPan(): ZoomPan {
   }, []);
 
   return {
-    scale: transform.scale,
-    isZoomed: transform.scale > MIN_SCALE,
-    canZoomIn: transform.scale < MAX_SCALE,
-    canZoomOut: transform.scale > MIN_SCALE,
-    transform: `translate(${transform.tx}px, ${transform.ty}px) scale(${transform.scale})`,
-    transition: panning ? 'none' : 'transform 180ms ease-out',
+    scale: render.scale,
+    isZoomed: render.scale > MIN_SCALE,
+    canZoomIn: render.scale < MAX_SCALE,
+    canZoomOut: render.scale > MIN_SCALE,
+    transform: `translate(${render.tx}px, ${render.ty}px) scale(${render.scale})`,
     stageRef,
     imageRef,
     reset,

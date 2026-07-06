@@ -1,51 +1,45 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
-// Minimal typing for the WebKit-prefixed Fullscreen API (Safari).
-interface FullscreenDocument extends Document {
-  webkitFullscreenElement?: Element | null;
-  webkitExitFullscreen?: () => Promise<void> | void;
-}
-interface FullscreenElement extends HTMLElement {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-}
-
-const fullscreenElement = (): Element | null => {
-  const doc = document as FullscreenDocument;
-  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
-};
+import { isFullscreen, toggleFullscreen } from '@/lib/fullscreen';
 
 /// A small always-visible button in the top-left corner that toggles the browser
-/// into fullscreen (and back). Sits above the lightbox so it stays reachable.
+/// into fullscreen (and back). Also bound to the `f` key. Sits above the lightbox
+/// so it stays reachable.
 export function FullscreenButton() {
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
-    const onChange = () => setIsFullscreen(Boolean(fullscreenElement()));
+    const onChange = () => setFullscreen(isFullscreen());
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'f' && event.key !== 'F') return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      toggleFullscreen();
+    };
+
     document.addEventListener('fullscreenchange', onChange);
     document.addEventListener('webkitfullscreenchange', onChange);
+    window.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('fullscreenchange', onChange);
       document.removeEventListener('webkitfullscreenchange', onChange);
+      window.removeEventListener('keydown', onKey);
     };
   }, []);
-
-  const toggle = () => {
-    const doc = document as FullscreenDocument;
-    if (fullscreenElement()) {
-      (doc.exitFullscreen ?? doc.webkitExitFullscreen)?.call(doc);
-      return;
-    }
-    const el = document.documentElement as FullscreenElement;
-    void (el.requestFullscreen ?? el.webkitRequestFullscreen)?.call(el);
-  };
 
   return (
     <button
       type="button"
-      onClick={toggle}
-      aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+      onClick={toggleFullscreen}
+      aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
       className="fixed left-4 top-4 z-[60] flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/25"
     >
       <svg
@@ -58,7 +52,7 @@ export function FullscreenButton() {
         className="h-5 w-5"
         aria-hidden="true"
       >
-        {isFullscreen ? (
+        {fullscreen ? (
           <>
             <path d="M8 3v3a2 2 0 0 1-2 2H3" />
             <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
